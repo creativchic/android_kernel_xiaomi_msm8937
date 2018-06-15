@@ -290,6 +290,7 @@ static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 
 	alloc_nid_done(sbi, ino);
 
+
 	d_instantiate(dentry, inode);
 	unlock_new_inode(inode);
 
@@ -297,6 +298,7 @@ static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		f2fs_sync_fs(sbi->sb, 1);
 
 	f2fs_balance_fs(sbi, true);
+
 	return 0;
 out:
 	handle_failed_inode(inode);
@@ -589,6 +591,7 @@ static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
 	f2fs_unlock_op(sbi);
 	alloc_nid_done(sbi, inode->i_ino);
 
+
 	err = fscrypt_encrypt_symlink(inode, symname, len, &disk_link);
 	if (err)
 		goto err_out;
@@ -596,7 +599,7 @@ static int f2fs_symlink(struct inode *dir, struct dentry *dentry,
 	err = page_symlink(inode, disk_link.name, disk_link.len);
 
 err_out:
-	d_instantiate(dentry, inode);
+	d_instantiate_new(dentry, inode);
 	unlock_new_inode(inode);
 
 	/*
@@ -622,6 +625,7 @@ err_out:
 	goto out_free_encrypted_link;
 
 out_handle_failed_inode:
+
 	handle_failed_inode(inode);
 out_free_encrypted_link:
 	if (disk_link.name != (unsigned char *)symname)
@@ -658,8 +662,7 @@ static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 
 	alloc_nid_done(sbi, inode->i_ino);
 
-	d_instantiate(dentry, inode);
-	unlock_new_inode(inode);
+	d_instantiate_new(dentry, inode);
 
 	if (IS_DIRSYNC(dir))
 		f2fs_sync_fs(sbi->sb, 1);
@@ -710,7 +713,8 @@ static int f2fs_mknod(struct inode *dir, struct dentry *dentry,
 
 	alloc_nid_done(sbi, inode->i_ino);
 
-	d_instantiate(dentry, inode);
+
+	d_instantiate_new(dentry, inode);
 	unlock_new_inode(inode);
 
 	if (IS_DIRSYNC(dir))
@@ -772,6 +776,7 @@ static int __f2fs_tmpfile(struct inode *dir, struct dentry *dentry,
 	unlock_new_inode(inode);
 
 	f2fs_balance_fs(sbi, true);
+
 	return 0;
 
 release_out:
