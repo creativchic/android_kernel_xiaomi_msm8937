@@ -329,7 +329,6 @@ static int squashfs_bio_submit(struct squashfs_read_request *req)
 	}
 	return 0;
 
-<<<<<<< HEAD
 bio_alloc_failed:
 	kfree(bio_req);
 req_alloc_failed:
