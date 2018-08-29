@@ -55,9 +55,6 @@
 #include "mdss_smmu.h"
 #include "mdss_mdp.h"
 #include "mdp3_ctrl.h"
-#include "mdss_dsi.h"
-
-#include "mdss_livedisplay.h"
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MDSS_FB_NUM 3
@@ -278,22 +275,11 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 
 static int lcd_backlight_registered;
 
-#define MDSS_BRIGHT_TO_BL1(out, v, bl_min, bl_max, min_bright, max_bright) do {\
-					if (v <= ((int)min_bright*(int)bl_max-(int)bl_min*(int)max_bright)\
-						/((int)bl_max - (int)bl_min)) out = 1; \
-					else \
-					out = (((int)bl_max - (int)bl_min)*v + \
-					((int)max_bright*(int)bl_min - (int)min_bright*(int)bl_max)) \
-					/((int)max_bright - (int)min_bright); \
-					} while (0)
-
 static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 				      enum led_brightness value)
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
-	int bl_lvl, brightness_min;
-
-	brightness_min = 10;
+	int bl_lvl;
 
 	if (mfd->boot_notification_led) {
 		led_trigger_event(mfd->boot_notification_led, 0);
@@ -305,23 +291,11 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 
 	/* This maps android backlight level 0 to 255 into
 	   driver backlight level 0 to bl_max with rounding */
-	#if 1
-	if (mfd->panel_info->bl_min == 1)
-		mfd->panel_info->bl_min = 5;
-	MDSS_BRIGHT_TO_BL1(bl_lvl, value, mfd->panel_info->bl_min, mfd->panel_info->bl_max,
-			brightness_min, mfd->panel_info->brightness_max);
-
-	if (bl_lvl && !value)
-		bl_lvl = 0;
-
-	#else
 	MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 				mfd->panel_info->brightness_max);
-	#endif
 
 	if (!bl_lvl && value)
 		bl_lvl = 1;
-	pr_debug("bl_lvl is %d, value is %d\n", bl_lvl, value);
 
 	if (!IS_CALIB_MODE_BL(mfd) && (!mfd->ext_bl_ctrl || !value ||
 							!mfd->bl_level)) {
@@ -956,8 +930,7 @@ static int mdss_fb_create_sysfs(struct msm_fb_data_type *mfd)
 	rc = sysfs_create_group(&mfd->fbi->dev->kobj, &mdss_fb_attr_group);
 	if (rc)
 		pr_err("sysfs group creation failed, rc=%d\n", rc);
-
-	return mdss_livedisplay_create_sysfs(mfd);
+	return rc;
 }
 
 static void mdss_fb_remove_sysfs(struct msm_fb_data_type *mfd)
@@ -3346,7 +3319,7 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 	struct mdp_layer_commit_v1 *commit_v1;
 	struct mdp_output_layer *output_layer;
 	struct mdss_panel_info *pinfo;
-	bool wait_for_finish, wb_change = false;
+	bool wait_for_finish, update = false, wb_change = false;
 	int ret = -EPERM;
 	u32 old_xres, old_yres, old_format;
 
@@ -3398,6 +3371,7 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 						output_layer->buffer.width,
 						output_layer->buffer.height,
 						output_layer->buffer.format);
+					update = true;
 				}
 			}
 			ret = mfd->mdp.atomic_validate(mfd, file, commit_v1);
@@ -3438,7 +3412,7 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 		ret = mdss_fb_pan_idle(mfd);
 
 end:
-	if (ret && (mfd->panel.type == WRITEBACK_PANEL) && wb_change)
+	if (update && ret && (mfd->panel.type == WRITEBACK_PANEL) && wb_change)
 		mdss_fb_update_resolution(mfd, old_xres, old_yres, old_format);
 	return ret;
 }
@@ -4815,8 +4789,6 @@ int mdss_fb_do_ioctl(struct fb_info *info, unsigned int cmd,
 	struct mdp_buf_sync buf_sync;
 	unsigned int dsi_mode = 0;
 	struct mdss_panel_data *pdata = NULL;
-	unsigned int Color_mode = 0;
-	unsigned int CE_mode = 0;
 
 	if (!info || !info->par)
 		return -EINVAL;
@@ -4893,22 +4865,6 @@ int mdss_fb_do_ioctl(struct fb_info *info, unsigned int cmd,
 
 	case MSMFB_ASYNC_POSITION_UPDATE:
 		ret = mdss_fb_async_position_update_ioctl(info, argp);
-		break;
-
-	case MSMFB_ENHANCE_SET_GAMMA:
-		if (copy_from_user(&Color_mode, argp, sizeof(Color_mode))) {
-			pr_err("%s: MSMFB_ENHANCE_SET_GAMMA ioctl failed\n", __func__);
-			goto exit;
-		}
-		ret = mdss_panel_set_gamma(pdata, Color_mode);
-		break;
-
-	case MSMFB_ENHANCE_SET_CE:
-		if (copy_from_user(&CE_mode, argp, sizeof(CE_mode))) {
-			pr_err("%s: MSMFB_ENHANCE_SET_CE ioctl failed\n", __func__);
-			goto exit;
-		}
-		ret = mdss_panel_set_ce(pdata, CE_mode);
 		break;
 
 	default:
